@@ -1,0 +1,13 @@
+{
+  "name": "TimeTracker",
+  "displayName": "Study Time Tracker",
+  "description": "A Pomodoro-style study timer with course management and analytics to help you track your study time effectively.",
+  "version": "1.0.1",
+  "author": "TimeTracker Team",
+  "keywords": ["study", "timer", "pomodoro", "productivity", "education"],
+  "homepage": "https://github.com/yourusername/TimeTracker",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/TimeTracker.git"
+  }
+}

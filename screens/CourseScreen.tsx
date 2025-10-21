@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,22 +19,60 @@ const CourseScreen: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const route = useRoute();
   const navigation = useNavigation();
-  const { courses, sessions, settings, removeCourse } = useStorage();
+  const { courses, sessions, settings, removeCourse, reload } = useStorage();
   
   const { courseId } = route.params as { courseId: string };
   const [duration, setDuration] = useState(settings.defaultDurationMinutes);
   const [customDuration, setCustomDuration] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  
+  // Real-time update state
+  const [localSessions, setLocalSessions] = useState<Session[]>([]);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const course = courses.find(c => c.id === courseId);
-  const courseSessions = sessions.filter(s => s.courseId === courseId);
+  const courseSessions = localSessions.filter(s => s.courseId === courseId);
+
+  // Initialize local sessions with current sessions and real-time updates
+  useEffect(() => {
+    setLocalSessions(sessions);
+  }, [sessions]);
+
+  // Real-time update effect - check for new sessions every 2 seconds
+  useEffect(() => {
+    const startRealTimeUpdates = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      intervalRef.current = setInterval(async () => {
+        try {
+          // Reload data from storage to get latest sessions
+          await reload();
+          setLastUpdateTime(Date.now());
+        } catch (error) {
+          console.error('Failed to reload sessions:', error);
+        }
+      }, 2000); // Check every 2 seconds to reduce frequency
+    };
+
+    startRealTimeUpdates();
+
+    // Cleanup interval on unmount
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [reload]);
 
   // Refresh sessions when screen comes into focus (e.g., returning from timer)
   useFocusEffect(
     React.useCallback(() => {
-      // This will trigger a re-render when sessions change
-      // The useStorage hook will automatically provide updated data
-    }, [sessions])
+      // Force immediate reload when screen comes into focus
+      reload().catch(console.error);
+    }, [reload])
   );
 
   const totalStudyTime = useMemo(() => {
@@ -45,21 +83,28 @@ const CourseScreen: React.FC = () => {
   const partialSessions = courseSessions.filter(s => s.isPartial).length;
 
   const handleStartTimer = () => {
-    let finalDuration = duration;
-    
-    if (showCustomInput && customDuration) {
-      const customMinutes = parseInt(customDuration);
-      if (customMinutes > 0 && customMinutes <= 480) { // Max 8 hours
-        finalDuration = customMinutes;
+    // If custom input is still open, validate it first
+    if (showCustomInput) {
+      if (customDuration) {
+        const customMinutes = parseInt(customDuration);
+        if (customMinutes > 0 && customMinutes <= 480) {
+          // Set the duration and close custom input
+          setDuration(customMinutes);
+          setShowCustomInput(false);
+          setCustomDuration('');
+        } else {
+          Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 480 minutes.');
+          return;
+        }
       } else {
-        Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 480 minutes.');
+        Alert.alert('Invalid Duration', 'Please enter a duration or cancel.');
         return;
       }
     }
     
     navigation.navigate('TimerScreen', { 
       courseId, 
-      durationMinutes: finalDuration 
+      durationMinutes: duration 
     });
   };
 
@@ -87,7 +132,7 @@ const CourseScreen: React.FC = () => {
     );
   };
 
-  const renderSessionBubble = (session: Session, index: number) => {
+  const renderSessionBubble = useCallback((session: Session, index: number) => {
     const Animated = require('react-native').Animated;
     const scale = new Animated.Value(0.85);
     Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 6, delay: index * 40 }).start();
@@ -167,7 +212,7 @@ const CourseScreen: React.FC = () => {
         </Animated.View>
       );
     }
-  };
+  }, [colors]);
 
   if (!course) {
     return (
@@ -197,6 +242,12 @@ const CourseScreen: React.FC = () => {
           <Text style={styles.statNumber}>{secondsToMinutes(totalStudyTime)}</Text>
           <Text style={styles.statLabel}>Minutes Studied</Text>
         </View>
+      </View>
+
+      {/* Real-time Update Indicator */}
+      <View style={styles.updateIndicator}>
+        <View style={[styles.updateDot, { backgroundColor: colors.success }]} />
+        <Text style={styles.updateText}>Live updates active</Text>
       </View>
 
       {/* Session Bubbles */}
@@ -243,7 +294,16 @@ const CourseScreen: React.FC = () => {
                 styles.durationButton,
                 showCustomInput && styles.durationButtonActive,
               ]}
-              onPress={() => setShowCustomInput(true)}
+              onPress={() => {
+                if (showCustomInput) {
+                  // If already showing custom input, close it
+                  setShowCustomInput(false);
+                  setCustomDuration('');
+                } else {
+                  // Show custom input
+                  setShowCustomInput(true);
+                }
+              }}
             >
               <Text
                 style={[
@@ -251,7 +311,7 @@ const CourseScreen: React.FC = () => {
                   showCustomInput && styles.durationButtonTextActive,
                 ]}
               >
-                Custom
+                {showCustomInput ? 'Cancel' : 'Custom'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -266,7 +326,33 @@ const CourseScreen: React.FC = () => {
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="numeric"
                 maxLength={3}
+                autoFocus={true}
+                selectTextOnFocus={true}
               />
+              <View style={styles.customDurationButtons}>
+                <TouchableOpacity
+                  style={[styles.customButton, styles.customButtonSecondary]}
+                  onPress={() => {
+                    setShowCustomInput(false);
+                    setCustomDuration('');
+                  }}
+                >
+                  <Text style={styles.customButtonTextSecondary}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.customButton, styles.customButtonPrimary]}
+                  onPress={() => {
+                    if (customDuration && parseInt(customDuration) > 0 && parseInt(customDuration) <= 480) {
+                      setDuration(parseInt(customDuration));
+                      setShowCustomInput(false);
+                    } else {
+                      Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 480 minutes.');
+                    }
+                  }}
+                >
+                  <Text style={styles.customButtonTextPrimary}>Set</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </View>
@@ -390,6 +476,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   durationButtons: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
   },
@@ -425,6 +512,36 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     backgroundColor: colors.background,
+    marginBottom: 12,
+  },
+  customDurationButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  customButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  customButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  customButtonSecondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  customButtonTextPrimary: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  customButtonTextSecondary: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
   startButton: {
     backgroundColor: colors.primary,
@@ -528,6 +645,24 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.background,
     fontSize: 16,
     fontWeight: '600',
+  },
+  updateIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  updateDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  updateText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 });
 

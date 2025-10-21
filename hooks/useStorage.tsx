@@ -89,9 +89,9 @@ export const useStorage = (): UseStorageReturn => {
       setLoading(false);
     }
   };
-  const reload = async () => {
+  const reload = useCallback(async () => {
     await loadData();
-  };
+  }, []);
 
   // Course operations
   const addCourse = useCallback(async (name: string) => {

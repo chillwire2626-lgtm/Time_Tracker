@@ -114,24 +114,17 @@ const CourseScreen: React.FC = () => {
   };
 
   const renderSessionBubble = useCallback((session: Session, index: number) => {
-    const Animated = require('react-native').Animated;
-    const scale = new Animated.Value(0.85);
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 6, delay: index * 40 }).start();
     const progress = session.durationSeconds / session.targetSeconds;
     const isComplete = progress >= 1.0;
-    const durationMinutes = Math.round(session.targetSeconds / 60);
+    // Display actual session duration instead of planned duration
+    const actualDurationMinutes = Math.round(session.durationSeconds / 60);
     
     if (isComplete) {
       // Complete session with modern gradient effect
       return (
-        <Animated.View
+        <View
           key={session.id}
-          style={[
-            styles.bubble,
-            {
-              transform: [{ scale }],
-            },
-          ]}
+          style={styles.bubble}
         >
           {/* Outer glow layer */}
           <View style={styles.bubbleOuterGlow} />
@@ -144,23 +137,18 @@ const CourseScreen: React.FC = () => {
           
           {/* Duration text */}
           <View style={styles.bubbleTextOverlay}>
-            <Text style={styles.bubbleDurationText}>{durationMinutes}m</Text>
+            <Text style={styles.bubbleDurationText}>{actualDurationMinutes}m</Text>
           </View>
-        </Animated.View>
+        </View>
       );
     } else {
       // Partial session with progress indicator
       const progressPercentage = Math.min(progress, 1.0) * 100;
       
       return (
-        <Animated.View
+        <View
           key={session.id}
-          style={[
-            styles.bubble,
-            {
-              transform: [{ scale }],
-            },
-          ]}
+          style={styles.bubble}
         >
           {/* Background circle */}
           <View style={styles.bubbleBackground} />
@@ -174,9 +162,9 @@ const CourseScreen: React.FC = () => {
           
           {/* Center content */}
           <View style={styles.bubbleCenterContent}>
-            <Text style={styles.bubbleDurationText}>{durationMinutes}m</Text>
+            <Text style={styles.bubbleDurationText}>{actualDurationMinutes}m</Text>
           </View>
-        </Animated.View>
+        </View>
       );
     }
   }, [colors]);

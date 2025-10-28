@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -29,9 +29,23 @@ const HomeScreen: React.FC = () => {
   const [renameCourseId, setRenameCourseId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameColor, setRenameColor] = useState<string>('#6C63FF');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const streak = calculateStreak(sessions);
   const motivationalMessage = getMotivationalMessage();
+
+  // Memoize total minutes to ensure they update when sessions change
+  const totalMinutes = useMemo(() => {
+    const minutes: { [courseId: string]: number } = {};
+    courses.forEach(course => {
+      const courseSessions = sessions.filter(s => s.courseId === course.id);
+      const totalMinutesForCourse = courseSessions.reduce((sum, session) => {
+        return sum + (session.durationMinutes || 0);
+      }, 0);
+      minutes[course.id] = totalMinutesForCourse;
+    });
+    return minutes;
+  }, [courses, sessions, refreshTrigger]);
 
   // Header fade-in
   const headerOpacity = useRef(new Animated.Value(0)).current;
@@ -44,12 +58,12 @@ const HomeScreen: React.FC = () => {
     }).start();
   }, [headerOpacity]);
 
-  // Refresh courses when screen comes into focus (e.g., after course deletion)
+  // Refresh data when screen comes into focus (e.g., after session completion)
   useFocusEffect(
     React.useCallback(() => {
-      // This will trigger a re-render when courses change
-      // The useStorage hook will automatically provide updated data
-    }, [courses])
+      // Force a re-render to update session counts instantly
+      setRefreshTrigger(prev => prev + 1);
+    }, [])
   );
 
   const handleAddCourse = async () => {
@@ -80,7 +94,8 @@ const HomeScreen: React.FC = () => {
     const onPressIn = () => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start();
     const onPressOut = () => Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }).start();
 
-    const totalSessions = sessions.filter(s => s.courseId === item.id).length;
+    // Use memoized total minutes for instant updates
+    const totalMinutesForCourse = totalMinutes[item.id] || 0;
     const palette = ['#FF6B6B', '#4ECDC4', '#FFD166', '#6C63FF', '#FF8C42'];
     const accentColor = palette[index % palette.length];
 
@@ -121,7 +136,7 @@ const HomeScreen: React.FC = () => {
             <Text style={styles.courseDate}>{formatDate(item.createdAt)}</Text>
           </View>
           <View style={styles.courseStatsRow}>
-            <Text style={styles.courseStatsText}>{totalSessions} sessions</Text>
+            <Text style={styles.courseStatsText}>{totalMinutesForCourse} min</Text>
           </View>
         </TouchableOpacity>
       </Animated.View>

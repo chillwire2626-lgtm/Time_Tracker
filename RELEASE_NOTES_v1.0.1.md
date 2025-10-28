@@ -1,3 +1,4 @@
+npx react-native run-android
 # Study Time Tracker - Version 1.0.1 Release Notes
 
 ## 🚀 What's New in Version 1.0.1

@@ -17,6 +17,9 @@ import { useTheme, useThemedStyles } from '../hooks/useTheme';
 import { useStorage } from '../hooks/useStorage';
 import { secondsToHms, minutesToSeconds, isoNow, safeVibrate } from '../lib/utils';
 import { TimerState } from '../types';
+import { soundAlertManager } from '../lib/soundAlert';
+import { screenWakeManager } from '../lib/screenWake';
+import { backgroundNotificationManager } from '../lib/backgroundNotification';
 
 // Convert polar angle to cartesian; angle 0° at 12 o’clock, clockwise
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
@@ -73,11 +76,40 @@ const TimerScreen: React.FC = () => {
   const [showNewCycleModal, setShowNewCycleModal] = useState(false);
   const [customTimeInput, setCustomTimeInput] = useState('');
   const [showCustomTimeInput, setShowCustomTimeInput] = useState(false);
+  
+  // State for alert management
+  const [isAlerting, setIsAlerting] = useState(false);
+  const [alertRemainingTime, setAlertRemainingTime] = useState(0);
 
   const course = courses.find(c => c.id === courseId);
 
   // Animated progress (for SVG ring)
   const progressAnim = useRef(new Animated.Value(0)).current;
+
+  // Monitor alert status
+  useEffect(() => {
+    if (isAlerting) {
+      const alertInterval = setInterval(() => {
+        const remaining = soundAlertManager.getRemainingAlertTime();
+        setAlertRemainingTime(remaining);
+        
+        if (remaining <= 0) {
+          setIsAlerting(false);
+          setAlertRemainingTime(0);
+        }
+      }, 1000);
+
+      return () => clearInterval(alertInterval);
+    }
+  }, [isAlerting]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      soundAlertManager.stopContinuousAlert();
+      screenWakeManager.releaseWake();
+    };
+  }, []);
 
   // Timer logic
   useEffect(() => {
@@ -181,7 +213,20 @@ const TimerScreen: React.FC = () => {
         isPartial: false,
       });
 
-      // Play alarm (vibration for now)
+      // Start continuous sound alert
+      soundAlertManager.startContinuousAlert();
+      setIsAlerting(true);
+      
+      // Wake up the screen
+      screenWakeManager.wakeScreen();
+      
+      // Schedule background notification (in case app is minimized)
+      backgroundNotificationManager.scheduleTimerCompletionNotification(
+        course?.name || 'Study Session',
+        durationMinutes
+      );
+
+      // Play initial vibration
       safeVibrate([0, 500, 200, 500]);
 
       // Show completion modal
@@ -225,11 +270,21 @@ const TimerScreen: React.FC = () => {
 
   // New cycle handlers
   const handleStartNewCycle = () => {
+    // Stop alert when user acknowledges
+    soundAlertManager.stopContinuousAlert();
+    setIsAlerting(false);
+    setAlertRemainingTime(0);
+    
     setShowCompletionModal(false);
     setShowNewCycleModal(true);
   };
 
   const handleExit = () => {
+    // Stop alert when user acknowledges
+    soundAlertManager.stopContinuousAlert();
+    setIsAlerting(false);
+    setAlertRemainingTime(0);
+    
     setShowCompletionModal(false);
     navigation.goBack();
   };
@@ -364,7 +419,15 @@ const TimerScreen: React.FC = () => {
       {/* Session Info */}
       <View style={styles.sessionInfo}>
         <Text style={styles.sessionInfoText}>Elapsed: {secondsToHms(timerState.elapsedSeconds)}</Text>
+        {isAlerting && (
+          <View style={styles.alertIndicator}>
+            <Text style={styles.alertText}>
+              🔔 Alert: {Math.ceil(alertRemainingTime / 1000)}s remaining
+            </Text>
+          </View>
+        )}
       </View>
+
 
       {/* Session Complete Modal */}
       <Modal
@@ -622,6 +685,19 @@ const createStyles = (colors: any) => StyleSheet.create({
   sessionInfoText: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  alertIndicator: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  alertText: {
+    fontSize: 12,
+    color: colors.background,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   // Modal styles
   modalOverlay: {

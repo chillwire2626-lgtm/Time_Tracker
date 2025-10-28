@@ -82,29 +82,10 @@ const CourseScreen: React.FC = () => {
   const fullSessions = courseSessions.filter(s => !s.isPartial).length;
   const partialSessions = courseSessions.filter(s => s.isPartial).length;
 
-  const handleStartTimer = () => {
-    // If custom input is still open, validate it first
-    if (showCustomInput) {
-      if (customDuration) {
-        const customMinutes = parseInt(customDuration);
-        if (customMinutes > 0 && customMinutes <= 480) {
-          // Set the duration and close custom input
-          setDuration(customMinutes);
-          setShowCustomInput(false);
-          setCustomDuration('');
-        } else {
-          Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 480 minutes.');
-          return;
-        }
-      } else {
-        Alert.alert('Invalid Duration', 'Please enter a duration or cancel.');
-        return;
-      }
-    }
-    
+  const handleStartTimer = (durationMinutes: number) => {
     navigation.navigate('TimerScreen', { 
       courseId, 
-      durationMinutes: duration 
+      durationMinutes 
     });
   };
 
@@ -141,72 +122,58 @@ const CourseScreen: React.FC = () => {
     const durationMinutes = Math.round(session.targetSeconds / 60);
     
     if (isComplete) {
-      // Full green for complete sessions
+      // Complete session with modern gradient effect
       return (
         <Animated.View
           key={session.id}
           style={[
             styles.bubble,
             {
-              backgroundColor: colors.success,
-              opacity: 1.0,
-              shadowColor: '#000',
-              shadowOpacity: 0.25,
-              shadowRadius: 6,
-              shadowOffset: { width: 0, height: 3 },
-              elevation: 4,
               transform: [{ scale }],
             },
           ]}
         >
-          <Text style={styles.bubbleDurationText}>{durationMinutes}m</Text>
+          {/* Outer glow layer */}
+          <View style={styles.bubbleOuterGlow} />
+          
+          {/* Main gradient background */}
+          <View style={styles.bubbleMainGradient} />
+          
+          {/* Inner highlight */}
+          <View style={styles.bubbleInnerHighlight} />
+          
+          {/* Duration text */}
+          <View style={styles.bubbleTextOverlay}>
+            <Text style={styles.bubbleDurationText}>{durationMinutes}m</Text>
+          </View>
         </Animated.View>
       );
     } else {
-      // Proportional coloring for partial sessions
-      const greenPercentage = Math.min(progress, 1.0) * 100;
-      const redPercentage = 100 - greenPercentage;
+      // Partial session with progress indicator
+      const progressPercentage = Math.min(progress, 1.0) * 100;
       
       return (
         <Animated.View
           key={session.id}
           style={[
             styles.bubble,
-              {
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                borderColor: colors.border,
-                shadowColor: '#000',
-                shadowOpacity: 0.15,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: 3,
+            {
               transform: [{ scale }],
-              },
+            },
           ]}
         >
-          {/* Green half (completed portion) */}
-          <View
-            style={[
-              styles.bubbleHalf,
-              {
-                backgroundColor: colors.success,
-                width: `${greenPercentage}%`,
-              },
-            ]}
-          />
-          {/* Red half (remaining portion) */}
-          <View
-            style={[
-              styles.bubbleHalf,
-              {
-                backgroundColor: colors.error,
-                width: `${redPercentage}%`,
-              },
-            ]}
-          />
-          {/* Duration text overlay */}
-          <View style={styles.bubbleTextOverlay}>
+          {/* Background circle */}
+          <View style={styles.bubbleBackground} />
+          
+          {/* Progress ring */}
+          <View style={styles.bubbleProgressRing}>
+            <View style={[styles.bubbleProgressFill, { 
+              width: `${progressPercentage}%` 
+            }]} />
+          </View>
+          
+          {/* Center content */}
+          <View style={styles.bubbleCenterContent}>
             <Text style={styles.bubbleDurationText}>{durationMinutes}m</Text>
           </View>
         </Animated.View>
@@ -275,8 +242,7 @@ const CourseScreen: React.FC = () => {
                   duration === minutes && !showCustomInput && styles.durationButtonActive,
                 ]}
                 onPress={() => {
-                  setDuration(minutes);
-                  setShowCustomInput(false);
+                  handleStartTimer(minutes);
                 }}
               >
                 <Text
@@ -343,23 +309,22 @@ const CourseScreen: React.FC = () => {
                   style={[styles.customButton, styles.customButtonPrimary]}
                   onPress={() => {
                     if (customDuration && parseInt(customDuration) > 0 && parseInt(customDuration) <= 480) {
-                      setDuration(parseInt(customDuration));
-                      setShowCustomInput(false);
+                      // Start timer directly with custom duration
+                      navigation.navigate('TimerScreen', { 
+                        courseId, 
+                        durationMinutes: parseInt(customDuration) 
+                      });
                     } else {
                       Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 480 minutes.');
                     }
                   }}
                 >
-                  <Text style={styles.customButtonTextPrimary}>Set</Text>
+                  <Text style={styles.customButtonTextPrimary}>Start</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
         </View>
-
-        <TouchableOpacity style={styles.startButton} onPress={handleStartTimer}>
-          <Text style={styles.startButtonText}>Start Timer</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Recent Sessions */}
@@ -543,17 +508,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  startButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  startButtonText: {
-    color: colors.background,
-    fontSize: 18,
-    fontWeight: '600',
-  },
   bubblesSection: {
     marginBottom: 24,
   },
@@ -566,21 +520,105 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 16,
   },
   bubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    margin: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    margin: 4,
     overflow: 'hidden',
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 8,
   },
-  bubbleHalf: {
-    height: '100%',
-    borderRadius: 0,
+  bubbleOuterGlow: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 32,
+    backgroundColor: 'rgba(76, 175, 80, 0.3)',
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
+  },
+  bubbleMainGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 30,
+    backgroundColor: '#4CAF50',
+    shadowColor: '#4CAF50',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
+  bubbleInnerHighlight: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: 2,
+    bottom: 2,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  bubbleBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  bubbleProgressRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 152, 0, 0.3)',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 152, 0, 0.5)',
+  },
+  bubbleProgressFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    borderRadius: 27,
+    backgroundColor: '#FF9800',
+    shadowColor: '#FF9800',
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  bubbleCenterContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 30,
   },
   bubbleTextOverlay: {
     position: 'absolute',
@@ -590,15 +628,16 @@ const createStyles = (colors: any) => StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
+    zIndex: 15,
   },
   bubbleDurationText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: colors.background,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 4,
+    letterSpacing: 0.5,
   },
   sessionsSection: {
     marginBottom: 24,
